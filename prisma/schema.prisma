@@ -1,0 +1,668 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdFormat {
+  VIDEO
+  DISPLAY
+  INTERSTITIAL
+  NATIVE
+  OFFERWALL
+}
+
+enum AdNetworkType {
+  GOOGLE_ADSENSE
+  PROPELLERADS
+  ADSTERRA
+  MEDIANET
+  REVCONTENT
+  ADGEM
+  OFFERTORO
+}
+
+enum FraudDetectionType {
+  RAPID_COMPLETION
+  IP_PATTERN
+  DEVICE_COLLISION
+  EARNING_SPIKE
+  CLICK_PATTERN
+  MULTIPLE_ACCOUNTS
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+  ADVERTISER
+}
+
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+  PREMIUM_PLUS
+}
+
+enum ActivityType {
+  AD_WATCH
+  SURVEY
+  TASK
+  REFERRAL
+  CASHBACK
+  CHALLENGE
+  BONUS
+  PENALTY
+}
+
+enum ActivityStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+  UNDER_REVIEW
+}
+
+enum TransactionType {
+  EARNING
+  WITHDRAWAL
+  INSTALLMENT_PAYMENT
+  BONUS
+  PENALTY
+  REFERRAL
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+enum InstallmentStatus {
+  ACTIVE
+  PAID_OFF
+  OVERDUE
+  CANCELLED
+}
+
+enum AdCategory {
+  TECH
+  FASHION
+  AUTOMOTIVE
+  FOOD
+  TRAVEL
+  HEALTH
+  FINANCE
+  ENTERTAINMENT
+  GAMING
+}
+
+enum TaskCategory {
+  DATA_ENTRY
+  IMAGE_TAGGING
+  TRANSCRIPTION
+  TESTING
+  CATEGORIZATION
+  CONTENT_MODERATION
+}
+
+enum TaskDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum PaymentMethod {
+  PAYPAL
+  BANK_TRANSFER
+  CRYPTO
+  CHECK
+}
+
+model User {
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  passwordHash          String?
+  name                  String
+  avatarUrl             String?
+  phone                 String?
+  gender                String?
+  country               String?
+  dateOfBirth           DateTime?
+  isEmailVerified       Boolean          @default(false)
+  isPhoneVerified       Boolean          @default(false)
+  isKycVerified         Boolean          @default(false)
+  referralCode          String           @unique
+  referredBy            String?
+  referrer              User?            @relation("UserReferrals", fields: [referredBy], references: [id], onDelete: SetNull)
+  referrals             User[]           @relation("UserReferrals")
+  role                  UserRole         @default(USER)
+  subscriptionTier      SubscriptionTier @default(FREE)
+  subscriptionExpiresAt DateTime?
+  totalEarnings         Float            @default(0)
+  availableBalance      Float            @default(0)
+  totalWithdrawn        Float            @default(0)
+  todaysEarnings        Float            @default(0)
+  weeklyEarnings        Float            @default(0)
+  monthlyEarnings       Float            @default(0)
+  lastEarningsReset     DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  earningActivities  EarningActivity[]
+  transactions       Transaction[]
+  withdrawalRequests WithdrawalRequest[]
+  installments       Installment[]
+  adViews            AdView[]
+  surveyResponses    SurveyResponse[]
+  taskAssignments    TaskAssignment[]
+  notifications      Notification[]
+  achievements       UserAchievement[]
+  challenges         UserChallenge[]
+  adImpressions      AdImpression[]
+  deviceFingerprints DeviceFingerprint[]
+  advertiserProfile  AdvertiserProfile?
+  advertiserVideoViews AdvertiserVideoView[]
+}
+
+model EarningActivity {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType   ActivityType
+  activityId     String
+  earningsAmount Float
+  status         ActivityStatus @default(PENDING)
+  completedAt    DateTime?
+  metadata       String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model AdContent {
+  id              String             @id @default(cuid())
+  title           String
+  description     String?
+  videoUrl        String
+  thumbnailUrl    String
+  durationSeconds Int
+  category        AdCategory
+  targetCountries String
+  earningsPerView Float
+  dailyViewLimit  Int
+  totalBudget     Float
+  remainingBudget Float
+  isActive        Boolean            @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  totalViews      Int                @default(0)
+  createdById     String?
+  // Multi-network support
+  networkId       String?
+  network         AdNetwork?         @relation(fields: [networkId], references: [id], onDelete: SetNull)
+  networkAdId     String?
+  adFormat        AdFormat           @default(VIDEO)
+  targetingData   String?
+  networkMetadata String?
+  // Advertiser support
+  advertiserId    String?
+  advertiser      AdvertiserProfile? @relation(fields: [advertiserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  views       AdView[]
+  impressions AdImpression[]
+  clicks      AdClick[]
+}
+
+model AdView {
+  id          String    @id @default(cuid())
+  adId        String
+  ad          AdContent @relation(fields: [adId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completedAt DateTime  @default(now())
+  earnings    Float
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+}
+
+model Survey {
+  id                  String             @id @default(cuid())
+  title               String
+  description         String?
+  provider            String
+  estimatedMinutes    Int
+  earningsAmount      Float
+  targetDemographics  String?
+  questions           String
+  isActive            Boolean            @default(true)
+  totalResponses      Int                @default(0)
+  maxResponses        Int
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  // Advertiser support
+  advertiserId        String?
+  advertiser          AdvertiserProfile? @relation(fields: [advertiserId], references: [id], onDelete: SetNull)
+  createdByAdvertiser Boolean            @default(false)
+
+  responses SurveyResponse[]
+}
+
+model SurveyResponse {
+  id           String   @id @default(cuid())
+  surveyId     String
+  survey       Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers      String
+  completedAt  DateTime @default(now())
+  earnings     Float
+  disqualified Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@unique([surveyId, userId])
+}
+
+model Task {
+  id                 String         @id @default(cuid())
+  title              String
+  description        String?
+  category           TaskCategory
+  instructions       String
+  requiredFiles      String?
+  earningsAmount     Float
+  estimatedMinutes   Int
+  difficulty         TaskDifficulty
+  maxAssignments     Int
+  currentAssignments Int            @default(0)
+  isActive           Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  expiresAt          DateTime?
+
+  assignments TaskAssignment[]
+}
+
+model TaskAssignment {
+  id          String         @id @default(cuid())
+  taskId      String
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission  String?
+  status      ActivityStatus @default(PENDING)
+  completedAt DateTime?
+  earnings    Float?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([taskId, userId])
+}
+
+model Installment {
+  id                      String            @id @default(cuid())
+  userId                  String
+  user                    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                   String
+  creditorName            String
+  totalAmount             Float
+  remainingAmount         Float
+  monthlyPayment          Float
+  dueDayOfMonth           Int
+  startDate               DateTime
+  endDate                 DateTime
+  status                  InstallmentStatus @default(ACTIVE)
+  automaticPaymentEnabled Boolean           @default(false)
+  totalPaid               Float             @default(0)
+  lastPaymentDate         DateTime?
+  nextPaymentDueDate      DateTime?
+  paymentHistory          String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  payments InstallmentPayment[]
+}
+
+model InstallmentPayment {
+  id            String      @id @default(cuid())
+  installmentId String
+  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentDate   DateTime    @default(now())
+  source        String
+  metadata      String?
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        TransactionType
+  amount      Float
+  description String
+  status      TransactionStatus @default(COMPLETED)
+  metadata    String?
+  createdAt   DateTime          @default(now())
+  processedAt DateTime?
+}
+
+model WithdrawalRequest {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount         Float
+  paymentMethod  PaymentMethod
+  paymentDetails String
+  status         WithdrawalStatus @default(PENDING)
+  adminNotes     String?
+  processedBy    String?
+  createdAt      DateTime         @default(now())
+  processedAt    DateTime?
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  metadata  String?
+  createdAt DateTime @default(now())
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  icon        String?
+  criteria    String
+  reward      Float
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  earnedAt      DateTime    @default(now())
+  progress      Float       @default(0)
+}
+
+model Challenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  type        String
+  reward      Float
+  startDate   DateTime
+  endDate     DateTime
+  target      String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  participants UserChallenge[]
+}
+
+model UserChallenge {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  progress    String?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  joinedAt    DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, challengeId])
+}
+
+model PremiumPlan {
+  id                 String           @id @default(cuid())
+  name               String
+  tier               SubscriptionTier
+  monthlyPrice       Float
+  yearlyPrice        Float
+  features           String
+  earningsMultiplier Float            @default(1.0)
+  maxWithdrawals     Int
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+// ============================================
+// Multi-Ad Network System Models
+// ============================================
+
+model AdNetwork {
+  id               String        @id @default(cuid())
+  name             String        @unique
+  type             AdNetworkType
+  description      String?
+  apiEndpoint      String?
+  isActive         Boolean       @default(true)
+  priority         Int           @default(5)
+  averageEcpm      Float         @default(0)
+  fillRate         Float         @default(0)
+  reliabilityScore Float         @default(100)
+  dailyBudget      Float?
+  dailySpent       Float         @default(0)
+  totalRevenue     Float         @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  config    AdNetworkConfig?
+  campaigns AdCampaign[]
+  ads       AdContent[]
+}
+
+model AdNetworkConfig {
+  id           String    @id @default(cuid())
+  networkId    String    @unique
+  network      AdNetwork @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  apiKey       String? // Encrypted
+  apiSecret    String? // Encrypted
+  publisherId  String?
+  zoneId       String?
+  siteId       String?
+  appId        String?
+  customerId   String?
+  metadata     String? // JSON for additional network-specific config
+  isConfigured Boolean   @default(false)
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model AdCampaign {
+  id              String         @id @default(cuid())
+  networkId       String
+  network         AdNetwork      @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  name            String
+  externalId      String? // Campaign ID from ad network
+  adFormat        AdFormat
+  targetCountries String?
+  targetAgeMin    Int?
+  targetAgeMax    Int?
+  targetGender    String?
+  budget          Float
+  spent           Float          @default(0)
+  isActive        Boolean        @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  metadata        String? // JSON for campaign-specific data
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  impressions     AdImpression[]
+}
+
+model AdImpression {
+  id                String      @id @default(cuid())
+  adId              String
+  ad                AdContent   @relation(fields: [adId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId        String?
+  campaign          AdCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  deviceFingerprint String?
+  ipAddress         String?
+  userAgent         String?
+  viewDuration      Int? // milliseconds
+  completed         Boolean     @default(false)
+  earnings          Float       @default(0)
+  createdAt         DateTime    @default(now())
+
+  click AdClick?
+}
+
+model AdClick {
+  id           String       @id @default(cuid())
+  impressionId String       @unique
+  impression   AdImpression @relation(fields: [impressionId], references: [id], onDelete: Cascade)
+  adId         String
+  ad           AdContent    @relation(fields: [adId], references: [id], onDelete: Cascade)
+  userId       String
+  clickedAt    DateTime     @default(now())
+  ipAddress    String?
+  userAgent    String?
+
+  conversion AdConversion?
+}
+
+model AdConversion {
+  id             String   @id @default(cuid())
+  clickId        String   @unique
+  click          AdClick  @relation(fields: [clickId], references: [id], onDelete: Cascade)
+  userId         String
+  conversionType String // e.g., 'signup', 'purchase', 'app_install', 'survey_complete'
+  revenue        Float
+  userEarnings   Float
+  metadata       String? // JSON with conversion details
+  convertedAt    DateTime @default(now())
+}
+
+model FraudDetection {
+  id          String             @id @default(cuid())
+  userId      String
+  type        FraudDetectionType
+  severity    String // 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
+  description String
+  evidence    String? // JSON with evidence data
+  ipAddress   String?
+  fingerprint String?
+  resolved    Boolean            @default(false)
+  resolvedBy  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime           @default(now())
+}
+
+model DeviceFingerprint {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String // Hash of device characteristics
+  ipAddress   String
+  userAgent   String
+  screenRes   String?
+  timezone    String?
+  language    String?
+  platform    String?
+  metadata    String? // JSON with additional fingerprint data
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, fingerprint])
+}
+
+// ============================================
+// Advertiser System Models
+// ============================================
+
+model AdvertiserProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName        String
+  companyDescription String?
+  website            String?
+  contactEmail       String?
+  contactPhone       String?
+  paymentEmail       String? // For receiving earnings
+  totalSpent         Float    @default(0)
+  totalEarnings      Float    @default(0)
+  totalVideos        Int      @default(0)
+  totalSurveys       Int      @default(0)
+  isVerified         Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  videos  AdvertiserVideo[]
+  surveys Survey[]
+  ads     AdContent[]
+}
+
+model AdvertiserVideo {
+  id              String            @id @default(cuid())
+  advertiserId    String
+  advertiser      AdvertiserProfile @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  videoUrl        String
+  thumbnailUrl    String
+  durationSeconds Int
+  category        AdCategory        @default(ENTERTAINMENT)
+  targetCountries String?
+  earningsPerView Float // Calculated based on duration
+  totalBudget     Float
+  remainingBudget Float
+  totalViews      Int               @default(0)
+  totalEarnings   Float             @default(0) // Advertiser's earnings from views
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([advertiserId])
+  @@index([isActive])
+  views           AdvertiserVideoView[]
+}
+
+model AdvertiserVideoView {
+  id          String          @id @default(cuid())
+  videoId     String
+  video       AdvertiserVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completedAt DateTime        @default(now())
+  earnings    Float
+  createdAt   DateTime        @default(now())
+
+  @@index([videoId])
+  @@index([userId])
+}
